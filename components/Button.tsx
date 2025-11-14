@@ -1,8 +1,3 @@
-/**
- * Example reusable component
- * Remove or modify this based on your project needs
- */
-
 interface ButtonProps {
   label: string;
   onClick?: () => void;

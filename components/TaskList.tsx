@@ -1,9 +1,10 @@
 'use client';
 
 import { Task, UpdateTaskInput } from '@/types/task.types';
-import { useState } from 'react';
-import { parseValidationErrors } from '@/lib/parseValidationErrors';
+import { useState, useMemo } from 'react';
+import { parseValidationErrors } from '@/lib/helpers/parseValidationErrors';
 import TaskValidator from '@/lib/validators/task.validator';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 interface TaskListProps {
   tasks: Task[];
@@ -30,6 +31,7 @@ export default function TaskList({
 }: TaskListProps) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ taskId: string; title: string } | null>(null);
   const [editFormData, setEditFormData] = useState<{ title: string; description: string; dueDate: string }>({
     title: '',
     description: '',
@@ -38,11 +40,18 @@ export default function TaskList({
   const [editFieldErrors, setEditFieldErrors] = useState<FieldErrors>({});
   const [updating, setUpdating] = useState(false);
 
-  /**
-   * TOGGLE TASK COMPLETION
-   * Uses PATCH endpoint to toggle completed status
-   * Updates UI immediately (optimistic update)
-   */
+  const todayDate = useMemo(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }, []);
+
+  /*
+   toggles the task completion.uses PATCH endpoint to toggle completed status and u
+   pdates the UI immediately
+  */
   const handleToggleTask = async (task: Task) => {
     try {
       const response = await fetch(`/api/contacts/${contactId}/tasks/${task.id}`, {
@@ -59,34 +68,36 @@ export default function TaskList({
     }
   };
 
-  /**
-   * DELETE TASK
-   * Sends DELETE request then removes from UI
-   */
-  const handleDeleteTask = async (taskId: string) => {
-    if (!confirm('Delete this task?')) return;
+  
+  //deletes the task.It shows confirmation dialog first, then sends DELETE request
+  const handleDeleteClick = (taskId: string, taskTitle: string) => {
+    setDeleteConfirm({ taskId, title: taskTitle });
+  };
 
-    setDeleting(taskId);
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirm) return;
+
+    setDeleting(deleteConfirm.taskId);
     try {
-      const response = await fetch(`/api/contacts/${contactId}/tasks/${taskId}`, {
+      const response = await fetch(`/api/contacts/${contactId}/tasks/${deleteConfirm.taskId}`, {
         method: 'DELETE',
       });
 
       if (!response.ok) throw new Error('Failed to delete task');
 
-      onTaskDeleted(taskId);
+      onTaskDeleted(deleteConfirm.taskId);
       onToast?.('Task deleted successfully', 'success');
+      setDeleteConfirm(null);
     } catch (error) {
       console.error('Error deleting task:', error);
       onToast?.('Failed to delete task', 'error');
+      setDeleteConfirm(null);
     } finally {
       setDeleting(null);
     }
   };
 
-  /**
-   * START EDITING TASK
-   */
+ 
   const handleStartEdit = (task: Task) => {
     setEditingTaskId(task.id);
     setEditFormData({
@@ -97,19 +108,12 @@ export default function TaskList({
     setEditFieldErrors({});
   };
 
-  /**
-   * CANCEL EDITING
-   */
   const handleCancelEdit = () => {
     setEditingTaskId(null);
     setEditFormData({ title: '', description: '', dueDate: '' });
     setEditFieldErrors({});
   };
 
-  /**
-   * UPDATE TASK
-   * Uses PUT endpoint to update task
-   */
   const handleUpdateTask = async (taskId: string) => {
     setEditFieldErrors({});
     setUpdating(true);
@@ -120,7 +124,6 @@ export default function TaskList({
       dueDate: editFormData.dueDate || undefined,
     };
 
-    // Validate
     const validation = TaskValidator.validateUpdateInput(payload);
     if (!validation.isValid) {
       const errors: FieldErrors = {};
@@ -162,18 +165,25 @@ export default function TaskList({
     }
   };
 
-  /**
-   * FORMAT DATE
-   * Converts ISO string to readable format (Nov 13, 2025)
-   */
+  // converts date to this format:(Nov 13, 2025)
   const formatDate = (isoString: string) => {
     const date = new Date(isoString);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   return (
-    <div className="task-list">
-      {tasks.map((task) => (
+    <>
+      <ConfirmDialog
+        isOpen={!!deleteConfirm}
+        title="Delete Task"
+        message={`Delete task "${deleteConfirm?.title}"?`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeleteConfirm(null)}
+      />
+      <div className="task-list">
+        {tasks.map((task) => (
         <div key={task.id} className={`task-item ${task.completed ? 'completed' : ''}`}>
           {editingTaskId === task.id ? (
             /* EDIT MODE */
@@ -209,7 +219,8 @@ export default function TaskList({
                   type="date"
                   value={editFormData.dueDate}
                   onChange={(e) => setEditFormData({ ...editFormData, dueDate: e.target.value })}
-                  min={new Date().toISOString().split('T')[0]}
+                  min={todayDate}
+                  max="2099-12-31"
                   className={editFieldErrors.dueDate ? 'input-error' : ''}
                   disabled={updating}
                 />
@@ -237,13 +248,12 @@ export default function TaskList({
           ) : (
             /* VIEW MODE */
             <>
-              {/* CHECKBOX - Toggle completion */}
+              {/* CHECKBOX , toggles completion */}
               <input
                 type="checkbox"
                 checked={task.completed}
                 onChange={() => handleToggleTask(task)}
                 className="task-checkbox"
-                aria-label={`Toggle task: ${task.title}`}
               />
 
               {/* TASK CONTENT */}
@@ -258,15 +268,15 @@ export default function TaskList({
                 <button
                   onClick={() => handleStartEdit(task)}
                   className="btn-edit"
-                  aria-label={`Edit task: ${task.title}`}
+                  type="button"
                 >
                   Edit
                 </button>
                 <button
-                  onClick={() => handleDeleteTask(task.id)}
+                  onClick={() => handleDeleteClick(task.id, task.title)}
                   disabled={deleting === task.id}
                   className="btn-delete"
-                  aria-label={`Delete task: ${task.title}`}
+                  type="button"
                 >
                   {deleting === task.id ? 'Deleting...' : 'Delete'}
                 </button>
@@ -275,6 +285,7 @@ export default function TaskList({
           )}
         </div>
       ))}
-    </div>
+      </div>
+    </>
   );
 }

@@ -1,8 +1,8 @@
 'use client';
 
 import { Task, CreateTaskInput } from '@/types/task.types';
-import { useState } from 'react';
-import { parseValidationErrors } from '@/lib/parseValidationErrors';
+import { useState, useMemo } from 'react';
+import { parseValidationErrors } from '@/lib/helpers/parseValidationErrors';
 import TaskValidator from '@/lib/validators/task.validator';
 
 interface TaskFormProps {
@@ -10,6 +10,7 @@ interface TaskFormProps {
   onTaskCreated: (task: Task) => void;
   onCancel: () => void;
   onToast?: (message: string, type: 'success' | 'error') => void;
+  hideCancelButton?: boolean; // Hide cancel button if parent handles it
 }
 
 interface FieldErrors {
@@ -19,7 +20,7 @@ interface FieldErrors {
   contactId?: string;
 }
 
-export default function TaskForm({ contactId, onTaskCreated, onCancel, onToast }: TaskFormProps) {
+export default function TaskForm({ contactId, onTaskCreated, onCancel, onToast, hideCancelButton = false }: TaskFormProps) {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -29,14 +30,22 @@ export default function TaskForm({ contactId, onTaskCreated, onCancel, onToast }
   const [generalError, setGeneralError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Clear field error when user types
+  // Get today's date in YYYY-MM-DD format for min attribute (using local time, not UTC)
+  const todayDate = useMemo(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }, []);
+
+  // clears field error when user types
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
       [name]: value,
     }));
-    // Clear error for this field
     if (fieldErrors[name as keyof FieldErrors]) {
       setFieldErrors((prev) => {
         const newErrors = { ...prev };
@@ -47,13 +56,12 @@ export default function TaskForm({ contactId, onTaskCreated, onCancel, onToast }
     setGeneralError('');
   };
 
-  // Validate and submit
+  // validates and submits the form
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFieldErrors({});
     setGeneralError('');
 
-    // Client-side validation
     const payload: CreateTaskInput = {
       contactId,
       title: formData.title.trim(),
@@ -84,7 +92,6 @@ export default function TaskForm({ contactId, onTaskCreated, onCancel, onToast }
       const data = await response.json();
 
       if (!response.ok) {
-        // Parse validation errors from API
         const apiErrors = parseValidationErrors(data.error || '');
         if (Object.keys(apiErrors).length > 0) {
           setFieldErrors(apiErrors as FieldErrors);
@@ -94,7 +101,7 @@ export default function TaskForm({ contactId, onTaskCreated, onCancel, onToast }
         return;
       }
 
-      // Success
+      // toast message on success
       onTaskCreated(data.data);
       onToast?.('Task created successfully', 'success');
       setFormData({ title: '', description: '', dueDate: '' });
@@ -167,7 +174,8 @@ export default function TaskForm({ contactId, onTaskCreated, onCancel, onToast }
           name="dueDate"
           value={formData.dueDate}
           onChange={handleChange}
-          min={new Date().toISOString().split('T')[0]} // Prevent selecting past dates
+          min={todayDate} // previous dates are disabled
+          max="2099-12-31" 
           className={fieldErrors.dueDate ? 'input-error' : ''}
           disabled={loading}
           aria-invalid={!!fieldErrors.dueDate}
@@ -185,9 +193,11 @@ export default function TaskForm({ contactId, onTaskCreated, onCancel, onToast }
         <button type="submit" className="btn-primary" disabled={loading}>
           {loading ? 'Creating...' : 'Create Task'}
         </button>
-        <button type="button" className="btn-secondary" onClick={onCancel} disabled={loading}>
-          Cancel
-        </button>
+        {!hideCancelButton && (
+          <button type="button" className="btn-secondary" onClick={onCancel} disabled={loading}>
+            Cancel
+          </button>
+        )}
       </div>
     </form>
   );

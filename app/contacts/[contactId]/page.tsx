@@ -6,6 +6,8 @@ import Link from 'next/link';
 import TaskList from '@/components/TaskList';
 import TaskForm from '@/components/TaskForm';
 import Toast, { useToast } from '@/components/Toast';
+import Loader from '@/components/Loader';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import { Contact } from '@/types/contact.types';
 import { Task } from '@/types/task.types';
 
@@ -19,9 +21,16 @@ export default function ContactDetailsPage() {
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [tasksLoading, setTasksLoading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [tasksKey, setTasksKey] = useState(0);
+  const [mounted, setMounted] = useState(false);
   const { toasts, addToast, removeToast } = useToast();
 
-  // Fetch contact details
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Fetches contact details
   useEffect(() => {
     const fetchContact = async () => {
       try {
@@ -38,16 +47,16 @@ export default function ContactDetailsPage() {
     };
 
     fetchContact();
-  }, [contactId, addToast]);
+  }, [contactId]); 
 
-  // Fetch tasks for this contact
+  // Fetches tasks for contact , refetches when contactId changes or tasksKey changes
   useEffect(() => {
-    if (!contact) return;
+    if (!contactId) return;
 
     const fetchTasks = async () => {
       setTasksLoading(true);
       try {
-        const response = await fetch(`/api/contacts/${contactId}/tasks`);
+        const response = await fetch(`/api/contacts/${contactId}/tasks?t=${Date.now()}`);
         if (!response.ok) throw new Error('Failed to fetch tasks');
         const data = await response.json();
         setTasks(data.data || []);
@@ -60,50 +69,57 @@ export default function ContactDetailsPage() {
     };
 
     fetchTasks();
-  }, [contactId]);
+  }, [contactId, tasksKey]); 
 
-  const handleTaskCreated = (newTask: Task) => {
-    setTasks([...tasks, newTask]);
+  const handleTaskCreated = async (newTask: Task) => {
     setShowTaskForm(false);
+    setTasksKey(prev => prev + 1);
   };
 
   const handleTaskToggled = (updatedTask: Task) => {
     setTasks(tasks.map((t) => (t.id === updatedTask.id ? updatedTask : t)));
+    // refetches after a short delay to ensure the server state is synced
+    setTimeout(() => setTasksKey(prev => prev + 1), 100);
   };
 
   const handleTaskUpdated = (updatedTask: Task) => {
     setTasks(tasks.map((t) => (t.id === updatedTask.id ? updatedTask : t)));
+    setTimeout(() => setTasksKey(prev => prev + 1), 100);
   };
 
   const handleTaskDeleted = (taskId: string) => {
     setTasks(tasks.filter((t) => t.id !== taskId));
+    setTimeout(() => setTasksKey(prev => prev + 1), 100);
   };
 
   const handleDeleteContact = () => {
     if (!contact) return;
-    
-    if (confirm('Delete this contact and all its tasks?')) {
-      fetch(`/api/contacts/${contactId}`, { method: 'DELETE' })
-        .then((res) => {
-          if (!res.ok) {
-            addToast('Failed to delete contact', 'error');
-          } else {
-            addToast('Contact deleted successfully', 'success');
-            router.push('/');
-          }
-        })
-        .catch(() => addToast('Delete failed', 'error'));
-    }
+    setShowDeleteConfirm(true);
   };
 
-  if (loading) {
+  const handleDeleteConfirm = () => {
+    fetch(`/api/contacts/${contactId}`, { method: 'DELETE' })
+      .then((res) => {
+        if (!res.ok) {
+          addToast('Failed to delete contact', 'error');
+        } else {
+          addToast('Contact deleted successfully', 'success');
+          router.push('/');
+        }
+      })
+      .catch(() => addToast('Delete failed', 'error'))
+      .finally(() => setShowDeleteConfirm(false));
+  };
+  if (!mounted || loading) {
+    if (!mounted) {
+      return null;
+    }
     return (
-      <div style={{ padding: '2rem' }}>
-        <p>Loading...</p>
+      <div className="page-loading">
+        <Loader size="large" />
       </div>
     );
   }
-
   if (!contact) {
     return (
       <div style={{ padding: '2rem' }}>
@@ -116,6 +132,15 @@ export default function ContactDetailsPage() {
   return (
     <>
       <Toast toasts={toasts} removeToast={removeToast} />
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Contact"
+        message={`Delete "${contact?.name}" and all associated tasks? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
       <div style={{ padding: '2rem', maxWidth: '800px', margin: '0 auto' }}>
         {/* Back Button */}
         <Link href="/" style={{ marginBottom: '1rem', display: 'inline-block' }}>
@@ -158,11 +183,12 @@ export default function ContactDetailsPage() {
               onTaskCreated={handleTaskCreated}
               onCancel={() => setShowTaskForm(false)}
               onToast={addToast}
+              hideCancelButton={true}
             />
           )}
 
           {tasksLoading ? (
-            <p className="loading">Loading tasks...</p>
+            <Loader />
           ) : tasks.length === 0 ? (
             <p className="empty-state">No tasks yet. Create one!</p>
           ) : (

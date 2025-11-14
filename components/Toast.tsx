@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -10,20 +10,6 @@ export interface ToastMessage {
   type: ToastType;
   duration?: number;
 }
-
-/**
- * Toast Component - Display temporary notifications
- *
- * LOGIC:
- * - useState(toasts) - stores array of active toast messages
- * - addToast() - adds new toast with auto-dismiss after duration
- * - removeToast() - removes toast by id
- * - useEffect - auto-dismiss toast after duration
- *
- * Usage from parent:
- * const toastRef = useRef<ToastHandle>(null);
- * toastRef.current?.addToast('Success!', 'success');
- */
 
 export interface ToastHandle {
   addToast: (message: string, type?: ToastType, duration?: number) => void;
@@ -40,27 +26,27 @@ interface ToastComponentProps {
 export const useToast = () => {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  const addToast = (message: string, type: ToastType = 'info', duration: number = 3000) => {
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const addToast = useCallback((message: string, type: ToastType = 'info', duration: number = 3000) => {
     const id = `toast-${++toastId}`;
     const newToast: ToastMessage = { id, message, type, duration };
 
     setToasts((prev) => [...prev, newToast]);
 
-    // Auto-dismiss after duration
+    //auto-dismiss after duration
     if (duration > 0) {
       setTimeout(() => {
         removeToast(id);
       }, duration);
     }
-  };
+  }, [removeToast]);
 
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
-
-  const clear = () => {
+  const clear = useCallback(() => {
     setToasts([]);
-  };
+  }, []);
 
   return { toasts, addToast, removeToast, clear };
 };

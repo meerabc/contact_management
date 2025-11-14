@@ -1,25 +1,13 @@
-/**
- * ContactList Component with Pagination
- *
- * LOGIC:
- * - useState(contacts) - stores ALL fetched contacts (unfiltered)
- * - useState(search) - stores search query
- * - useState(currentPage) - tracks current page number
- * - useEffect - fetches contacts when search changes, resets to page 1
- * - Pagination: ITEMS_PER_PAGE = 10 contacts per page
- * - displayedContacts - slice of contacts for current page
- * - totalPages - calculated from total contacts / ITEMS_PER_PAGE
- *
- * Props:
- * - onSelectContact?: callback when contact is clicked (optional)
- * - selectedContact?: currently selected contact for highlighting (optional)
- */
-
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Fragment } from 'react';
 import Link from 'next/link';
 import { Contact } from '@/types/contact.types';
+import Modal from '@/components/Modal';
+import ContactForm from '@/components/ContactForm';
+import Loader from '@/components/Loader';
+import Toast, { useToast } from '@/components/Toast';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 interface ContactListProps {
   onSelectContact?: (contact: Contact) => void;
@@ -31,31 +19,37 @@ const ITEMS_PER_PAGE = 10;
 export default function ContactList({ onSelectContact, selectedContact }: ContactListProps) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true); // Start with true to show loading initially
+  const [loading, setLoading] = useState(true); 
   const [error, setError] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [sortBy, setSortBy] = useState<'name' | 'email' | 'createdAt'>('name');
+  const [sortBy, setSortBy] = useState<'name' | 'email' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const { toasts, addToast, removeToast } = useToast();
 
-  // Calculate pagination values with sorting applied - memoized for performance
   const sortedContacts = useMemo(() => {
+    if (!contacts || contacts.length === 0) {
+      return [];
+    }
+    if (!sortBy) {
+      return sortDirection === 'asc' ? contacts : [...contacts].reverse();
+    }
     return [...contacts].sort((a, b) => {
-      let compareA: any;
-      let compareB: any;
-
       if (sortBy === 'name') {
-        compareA = a.name.toLowerCase();
-        compareB = b.name.toLowerCase();
+        const compareA = a.name.toLowerCase();
+        const compareB = b.name.toLowerCase();
+        if (compareA < compareB) return sortDirection === 'asc' ? -1 : 1;
+        if (compareA > compareB) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
       } else if (sortBy === 'email') {
-        compareA = a.email.toLowerCase();
-        compareB = b.email.toLowerCase();
-      } else if (sortBy === 'createdAt') {
-        compareA = new Date(a.createdAt).getTime();
-        compareB = new Date(b.createdAt).getTime();
+        const compareA = a.email.toLowerCase();
+        const compareB = b.email.toLowerCase();
+        if (compareA < compareB) return sortDirection === 'asc' ? -1 : 1;
+        if (compareA > compareB) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
       }
-
-      if (compareA < compareB) return sortDirection === 'asc' ? -1 : 1;
-      if (compareA > compareB) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
   }, [contacts, sortBy, sortDirection]);
@@ -68,11 +62,10 @@ export default function ContactList({ onSelectContact, selectedContact }: Contac
     return sortedContacts.slice(startIndex, endIndex);
   }, [sortedContacts, currentPage]);
 
-  /**
-   * FETCH CONTACTS FROM API
-   * Called on mount and when search query changes
-   * Debounced to avoid too many requests while typing
-   * Resets to page 1 when search changes
+  /*
+   this useEffect fetches contacts from the api.It is called on mount and when search query 
+   changes.Debounced to avoid too many requests while typing and resets to page 1 when search 
+   changes
    */
   useEffect(() => {
     let isMounted = true;
@@ -81,20 +74,20 @@ export default function ContactList({ onSelectContact, selectedContact }: Contac
     const fetchContacts = async () => {
       setLoading(true);
       setError('');
-      setCurrentPage(1); // Reset to page 1 on new search
 
       try {
-        const query = search ? `?search=${encodeURIComponent(search)}` : '';
-        const response = await fetch(`/api/contacts${query}`);
-
+        const url = search 
+          ? `/api/contacts?search=${encodeURIComponent(search)}` 
+          : `/api/contacts`;
+        const response = await fetch(url);
         if (!response.ok) {
           const data = await response.json();
           throw new Error(data.error || 'Failed to fetch contacts');
         }
-
         const data = await response.json();
         if (isMounted) {
           setContacts(data.data || []);
+          setCurrentPage(1);
         }
       } catch (err: unknown) {
         if (isMounted) {
@@ -108,9 +101,8 @@ export default function ContactList({ onSelectContact, selectedContact }: Contac
         }
       }
     };
-
-    // Initial load - fetch immediately
-    // Search changes - debounce to avoid too many requests
+    // initial load - fetch immediately
+    // search changes - debounce to avoid too many requests
     if (search === '') {
       fetchContacts();
     } else {
@@ -118,24 +110,26 @@ export default function ContactList({ onSelectContact, selectedContact }: Contac
         fetchContacts();
       }, 500);
     }
-
     return () => {
       isMounted = false;
-      if (timer) clearTimeout(timer);
+      if (timer) {
+        clearTimeout(timer);
+      }
     };
-  }, [search]);
+  }, [search, refreshKey]);
 
-  /**
-   * HANDLE DELETE CONTACT
-   * Shows confirmation, calls DELETE API, refetches list
-   */
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Delete contact "${name}"? This will also delete all associated tasks.`)) {
-      return;
-    }
+  /*
+   handles delete contact.it shows confirmation dialog, calls DELETE API, refetches list
+  */
+  const handleDeleteClick = (id: string, name: string) => {
+    setDeleteConfirm({ id, name });
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirm) return;
 
     try {
-      const response = await fetch(`/api/contacts/${id}`, {
+      const response = await fetch(`/api/contacts/${deleteConfirm.id}`, {
         method: 'DELETE',
       });
 
@@ -143,33 +137,56 @@ export default function ContactList({ onSelectContact, selectedContact }: Contac
         throw new Error('Failed to delete contact');
       }
 
-      // Refetch contacts after delete
-      setSearch('');
+      addToast('Contact deleted successfully', 'success');
+      setDeleteConfirm(null);
+      setRefreshKey(prev => prev + 1);
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : 'Delete failed';
-      alert(errorMsg);
+      addToast(errorMsg, 'error');
+      setDeleteConfirm(null);
     }
   };
 
-  /**
-   * HANDLE PAGE CHANGE
-   * Validates page number and updates currentPage state
-   */
+  // updates currentPage state
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= totalPages) {
       setCurrentPage(newPage);
     }
   };
 
+  const handleContactCreated = async () => {
+    setShowCreateModal(false);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    setRefreshKey(prev => prev + 1);
+  };
+
   return (
-    <div className="contact-list-container">
-      {/* HEADER WITH TITLE AND CREATE BUTTON */}
-      <div className="list-header">
-        <h2>Contacts</h2>
-        <Link href="/contacts/new" className="btn-primary">
-          + New Contact
-        </Link>
-      </div>
+    <Fragment>
+      <Toast toasts={toasts} removeToast={removeToast} />
+      <Modal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        title="Create New Contact"
+      >
+        <ContactForm onToast={addToast} onClose={handleContactCreated} isModal={true} />
+      </Modal>
+      <ConfirmDialog
+        isOpen={!!deleteConfirm}
+        title="Delete Contact"
+        message={`Delete contact "${deleteConfirm?.name}"? This will also delete all associated tasks.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeleteConfirm(null)}
+      />
+      <div className="contact-list-container">
+        {/* HEADER WITH TITLE AND CREATE BUTTON */}
+        <div className="list-header">
+          <h2>Contacts</h2>
+          <button onClick={() => setShowCreateModal(true)} className="btn-primary" type="button">
+            + New Contact
+          </button>
+        </div>
 
       {/* SEARCH AND SORT CONTROLS */}
       <div className="controls-row">
@@ -183,16 +200,27 @@ export default function ContactList({ onSelectContact, selectedContact }: Contac
         </div>
 
         <div className="sort-controls">
-          <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
+          <select
+            value={sortBy || ''}
+            onChange={(e) => {
+              const value = e.target.value;
+              setSortBy(value === '' ? null : value as 'name' | 'email');
+              setCurrentPage(1);
+            }}
+          >
+            <option value="">No Sorting</option>
             <option value="name">Sort by Name</option>
             <option value="email">Sort by Email</option>
-            <option value="createdAt">Sort by Date</option>
           </select>
 
           <button
             className={`btn-small sort-direction ${sortDirection === 'desc' ? 'active' : ''}`}
-            onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
-            title={`Click to sort ${sortDirection === 'asc' ? 'descending' : 'ascending'}`}
+            onClick={() => {
+              setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+              setCurrentPage(1);
+            }}
+            title={`Click to ${sortDirection === 'asc' ? 'reverse' : 'reverse'} order`}
+            type="button"
           >
             {sortDirection === 'asc' ? '↑ Asc' : '↓ Desc'}
           </button>
@@ -203,9 +231,9 @@ export default function ContactList({ onSelectContact, selectedContact }: Contac
       {error && <div className="error-message">{error}</div>}
 
       {/* LOADING STATE */}
-      {loading && <p className="loading">Loading contacts...</p>}
+      {loading && <Loader />}
 
-      {/* EMPTY STATE - Only show if not loading and no contacts */}
+      {/* EMPTY STATE, it only shows if not loading and no contacts */}
       {!loading && contacts.length === 0 && !error && (
         <p className="empty-state">
           {search ? 'No contacts found.' : 'No contacts yet. Create your first contact!'}
@@ -214,7 +242,7 @@ export default function ContactList({ onSelectContact, selectedContact }: Contac
 
       {/* CONTACTS LIST */}
       {!loading && contacts.length > 0 && (
-        <>
+        <Fragment>
           <div className="contacts-list">
             {displayedContacts.map((contact) => (
               <div
@@ -233,10 +261,11 @@ export default function ContactList({ onSelectContact, selectedContact }: Contac
                     </Link>
                     <button
                       onClick={(e) => {
-                        e.preventDefault();
-                        handleDelete(contact.id, contact.name);
+                        e.stopPropagation();
+                        handleDeleteClick(contact.id, contact.name);
                       }}
                       className="btn-small btn-danger"
+                      type="button"
                     >
                       Delete
                     </button>
@@ -270,8 +299,9 @@ export default function ContactList({ onSelectContact, selectedContact }: Contac
               </button>
             </div>
           )}
-        </>
+        </Fragment>
       )}
-    </div>
+      </div>
+    </Fragment>
   );
 }

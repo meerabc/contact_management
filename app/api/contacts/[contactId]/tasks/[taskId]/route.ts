@@ -1,32 +1,21 @@
-/**
- * API Routes for Single Task (by taskId)
- *
- * Endpoints:
- * PUT    /api/contacts/[contactId]/tasks/[taskId]      - Update task
- * PATCH  /api/contacts/[contactId]/tasks/[taskId]      - Toggle task completion
- * DELETE /api/contacts/[contactId]/tasks/[taskId]      - Delete task
- *
- * Dynamic routes: [contactId] and [taskId]
- */
+/*
+ APIs:
+ PUT    /api/contacts/[contactId]/tasks/[taskId]      - Update task
+ PATCH  /api/contacts/[contactId]/tasks/[taskId]      - Toggle task completion
+ DELETE /api/contacts/[contactId]/tasks/[taskId]      - Delete task
+*/
 
 import { NextRequest, NextResponse } from 'next/server';
 import * as taskService from '@/services/taskService';
 import { UpdateTaskInput } from '@/types/task.types';
 
-/**
- * PUT /api/contacts/[contactId]/tasks/[taskId]
- * Update task by taskId
- *
- * Request body: { title?, description?, completed?, dueDate? }
- * Response: { success: true, data: {...updatedTask...} }
- */
+// PUT    /api/contacts/[contactId]/tasks/[taskId]
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { contactId: string; taskId: string } }
+  { params }: { params: Promise<{ contactId: string; taskId: string }> }
 ) {
   try {
-    const { contactId, taskId } = params;
-
+    const { contactId, taskId } = await params;
     if (!contactId || !taskId) {
       return NextResponse.json(
         {
@@ -36,10 +25,7 @@ export async function PUT(
         { status: 400 }
       );
     }
-
-    // Parse request body
     const body = await request.json();
-
     if (!body || typeof body !== 'object') {
       return NextResponse.json(
         {
@@ -49,11 +35,7 @@ export async function PUT(
         { status: 400 }
       );
     }
-
-    // Update task using service
     const updatedTask = taskService.updateTask(taskId, body as UpdateTaskInput);
-
-    // Verify task belongs to contact
     if (updatedTask.contactId !== contactId) {
       return NextResponse.json(
         {
@@ -69,13 +51,21 @@ export async function PUT(
       data: updatedTask,
     });
   } catch (error) {
+    let contactId = 'unknown';
+    let taskId = 'unknown';
+    try {
+      const resolvedParams = await params;
+      contactId = resolvedParams?.contactId || 'unknown';
+      taskId = resolvedParams?.taskId || 'unknown';
+    } catch {
+      contactId = 'unknown';
+      taskId = 'unknown';
+    }
     console.error(
-      `API: PUT /api/contacts/${params.contactId}/tasks/${params.taskId} error:`,
+      `API: PUT /api/contacts/${contactId}/tasks/${taskId} error:`,
       error
     );
-
     const errorMessage = error instanceof Error ? error.message : 'Failed to update task';
-
     if (errorMessage.includes('not found')) {
       return NextResponse.json(
         {
@@ -85,7 +75,6 @@ export async function PUT(
         { status: 404 }
       );
     }
-
     if (errorMessage.includes('Validation failed')) {
       return NextResponse.json(
         {
@@ -95,7 +84,6 @@ export async function PUT(
         { status: 400 }
       );
     }
-
     return NextResponse.json(
       {
         success: false,
@@ -106,20 +94,13 @@ export async function PUT(
   }
 }
 
-/**
- * PATCH /api/contacts/[contactId]/tasks/[taskId]
- * Toggle task completion status
- *
- * No request body needed
- * Response: { success: true, data: {...updatedTask...} }
- */
+// PATCH  /api/contacts/[contactId]/tasks/[taskId]
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { contactId: string; taskId: string } }
+  { params }: { params: Promise<{ contactId: string; taskId: string }> }
 ) {
   try {
-    const { contactId, taskId } = params;
-
+    const { contactId, taskId } = await params;
     if (!contactId || !taskId) {
       return NextResponse.json(
         {
@@ -129,11 +110,7 @@ export async function PATCH(
         { status: 400 }
       );
     }
-
-    // Toggle task using service
     const updatedTask = taskService.toggleTask(taskId);
-
-    // Verify task belongs to contact
     if (updatedTask.contactId !== contactId) {
       return NextResponse.json(
         {
@@ -149,13 +126,21 @@ export async function PATCH(
       data: updatedTask,
     });
   } catch (error) {
+    let contactId = 'unknown';
+    let taskId = 'unknown';
+    try {
+      const resolvedParams = await params;
+      contactId = resolvedParams?.contactId || 'unknown';
+      taskId = resolvedParams?.taskId || 'unknown';
+    } catch {
+      contactId = 'unknown';
+      taskId = 'unknown';
+    }
     console.error(
-      `API: PATCH /api/contacts/${params.contactId}/tasks/${params.taskId} error:`,
+      `API: PATCH /api/contacts/${contactId}/tasks/${taskId} error:`,
       error
     );
-
     const errorMessage = error instanceof Error ? error.message : 'Failed to toggle task';
-
     if (errorMessage.includes('not found')) {
       return NextResponse.json(
         {
@@ -165,7 +150,6 @@ export async function PATCH(
         { status: 404 }
       );
     }
-
     return NextResponse.json(
       {
         success: false,
@@ -176,19 +160,13 @@ export async function PATCH(
   }
 }
 
-/**
- * DELETE /api/contacts/[contactId]/tasks/[taskId]
- * Delete task by taskId
- *
- * Response: { success: true, message: "Task deleted" }
- */
+// DELETE /api/contacts/[contactId]/tasks/[taskId]
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { contactId: string; taskId: string } }
+  { params }: { params: Promise<{ contactId: string; taskId: string }> }
 ) {
   try {
-    const { contactId, taskId } = params;
-
+    const { contactId, taskId } = await params;
     if (!contactId || !taskId) {
       return NextResponse.json(
         {
@@ -198,8 +176,6 @@ export async function DELETE(
         { status: 400 }
       );
     }
-
-    // Check if task belongs to contact first
     const task = taskService.getTaskById(taskId);
     if (!task) {
       return NextResponse.json(
@@ -210,7 +186,6 @@ export async function DELETE(
         { status: 404 }
       );
     }
-
     if (task.contactId !== contactId) {
       return NextResponse.json(
         {
@@ -220,10 +195,7 @@ export async function DELETE(
         { status: 403 }
       );
     }
-
-    // Delete task
     const deleted = taskService.deleteTask(taskId);
-
     if (!deleted) {
       return NextResponse.json(
         {
@@ -239,13 +211,21 @@ export async function DELETE(
       message: `Task ${taskId} deleted successfully`,
     });
   } catch (error) {
+    let contactId = 'unknown';
+    let taskId = 'unknown';
+    try {
+      const resolvedParams = await params;
+      contactId = resolvedParams?.contactId || 'unknown';
+      taskId = resolvedParams?.taskId || 'unknown';
+    } catch {
+      contactId = 'unknown';
+      taskId = 'unknown';
+    }
     console.error(
-      `API: DELETE /api/contacts/${params.contactId}/tasks/${params.taskId} error:`,
+      `API: DELETE /api/contacts/${contactId}/tasks/${taskId} error:`,
       error
     );
-
     const errorMessage = error instanceof Error ? error.message : 'Failed to delete task';
-
     if (errorMessage.includes('not found')) {
       return NextResponse.json(
         {
@@ -255,7 +235,6 @@ export async function DELETE(
         { status: 404 }
       );
     }
-
     return NextResponse.json(
       {
         success: false,

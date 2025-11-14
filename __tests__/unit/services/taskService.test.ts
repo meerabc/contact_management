@@ -24,6 +24,16 @@ jest.mock('@/lib/db/tasks/index');
 
 const mockDb = db as jest.Mocked<typeof db>;
 
+// Helper to get a future date (tomorrow)
+function getFutureDate(): string {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const year = tomorrow.getFullYear();
+  const month = String(tomorrow.getMonth() + 1).padStart(2, '0');
+  const day = String(tomorrow.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 describe('Task Service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -43,7 +53,7 @@ describe('Task Service', () => {
           title: 'Follow up',
           description: 'Check status',
           completed: false,
-          dueDate: '2025-02-01',
+          dueDate: getFutureDate(),
           createdAt: '2025-01-01T00:00:00Z',
           updatedAt: '2025-01-01T00:00:00Z',
         },
@@ -53,7 +63,7 @@ describe('Task Service', () => {
           title: 'Send document',
           description: 'Send proposal',
           completed: true,
-          dueDate: '2025-01-15',
+          dueDate: getFutureDate(),
           createdAt: '2025-01-02T00:00:00Z',
           updatedAt: '2025-01-02T00:00:00Z',
         },
@@ -86,7 +96,7 @@ describe('Task Service', () => {
         contactId: '1',
         title: 'Follow up',
         description: 'Check status',
-        dueDate: '2025-02-01',
+        dueDate: getFutureDate(),
       };
 
       const mockCreatedTask: Task = {

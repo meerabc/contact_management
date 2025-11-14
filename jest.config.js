@@ -12,7 +12,8 @@ const customJestConfig = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
   },
-  testMatch: ['**/__tests__/**/*.(test|spec).[jt]s?(x)', '**/?(*.)+(spec|test).[jt]s?(x)'],
+  testMatch: ['**/__tests__/unit/**/*.(test|spec).[jt]s?(x)'],
+  testPathIgnorePatterns: ['/node_modules/', '/__tests__/e2e/'],
   collectCoverageFrom: [
     'app/**/*.{js,jsx,ts,tsx}',
     'components/**/*.{js,jsx,ts,tsx}',
@@ -31,6 +32,8 @@ const customJestConfig = {
       statements: 50,
     },
   },
+  coverageDirectory: './test-results/coverage',
+  testResultsProcessor: undefined,
 };
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async

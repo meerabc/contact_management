@@ -1,19 +1,11 @@
-/**
- * ContactForm Component
- * 
- * Features:
- * - Field-level validation with red highlights and error messages
- * - Parses API validation errors to show individual field errors
- * - Simple, minimal design
- */
-
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { parseValidationErrors } from '@/lib/parseValidationErrors';
+import { parseValidationErrors } from '@/lib/helpers/parseValidationErrors';
 import ContactValidator from '@/lib/validators/contact.validator';
+import Loader from '@/components/Loader';
 
 interface ContactFormData {
   name: string;
@@ -29,6 +21,8 @@ interface Contact extends ContactFormData {
 
 interface ContactFormProps {
   onToast?: (message: string, type: 'success' | 'error') => void;
+  onClose?: () => void; // for modal mode (form opens in popup form (for creating new contact))
+  isModal?: boolean; // checks if form is in modal form
 }
 
 interface FieldErrors {
@@ -38,7 +32,7 @@ interface FieldErrors {
   address?: string;
 }
 
-export default function ContactForm({ onToast }: ContactFormProps) {
+export default function ContactForm({ onToast, onClose, isModal = false }: ContactFormProps) {
   const router = useRouter();
   const params = useParams();
   const contactId = params?.contactId as string | undefined;
@@ -55,7 +49,7 @@ export default function ContactForm({ onToast }: ContactFormProps) {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [generalError, setGeneralError] = useState('');
 
-  // Fetch contact if editing
+  // fetches contact if editing
   useEffect(() => {
     if (!isEditMode) {
       setLoading(false);
@@ -65,12 +59,14 @@ export default function ContactForm({ onToast }: ContactFormProps) {
     const fetchContact = async () => {
       try {
         const response = await fetch(`/api/contacts/${contactId}`);
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error('Invalid response from server');
+        }
         const data = await response.json();
-
         if (!response.ok) {
           throw new Error(data.error || 'Failed to fetch contact');
         }
-
         const contact = data.data as Contact;
         setFormData({
           name: contact.name,
@@ -89,14 +85,13 @@ export default function ContactForm({ onToast }: ContactFormProps) {
     fetchContact();
   }, [contactId, isEditMode]);
 
-  // Clear field error when user types
+  // clears the field errors when user starts typing
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
       [name]: value,
     }));
-    // Clear error for this field when user starts typing
     if (fieldErrors[name as keyof FieldErrors]) {
       setFieldErrors((prev) => {
         const newErrors = { ...prev };
@@ -107,17 +102,15 @@ export default function ContactForm({ onToast }: ContactFormProps) {
     setGeneralError('');
   };
 
-  // Validate form and submit
+  // validates the form and submits it
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setFieldErrors({});
     setGeneralError('');
 
-    // Client-side validation using the same validator as backend
-    const validation = ContactValidator.validateCreateInput(formData);
-    
+    const validation = ContactValidator.validateCreateInput(formData);  
+
     if (!validation.isValid) {
-      // Convert validation errors to fieldErrors object
       const errors: FieldErrors = {};
       validation.errors.forEach((err) => {
         errors[err.field as keyof FieldErrors] = err.message;
@@ -125,9 +118,7 @@ export default function ContactForm({ onToast }: ContactFormProps) {
       setFieldErrors(errors);
       return;
     }
-
     setSubmitting(true);
-
     try {
       const method = isEditMode ? 'PUT' : 'POST';
       const url = isEditMode ? `/api/contacts/${contactId}` : '/api/contacts';
@@ -139,30 +130,36 @@ export default function ContactForm({ onToast }: ContactFormProps) {
         },
         body: JSON.stringify(formData),
       });
-
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        setGeneralError('Invalid response from server');
+        setSubmitting(false);
+        return;
+      }
       const data = await response.json();
-
       if (!response.ok) {
-        // Parse validation errors from API response
         const apiErrors = parseValidationErrors(data.error || '');
         if (Object.keys(apiErrors).length > 0) {
           setFieldErrors(apiErrors as FieldErrors);
         } else {
           setGeneralError(data.error || 'Failed to save contact');
         }
+        setSubmitting(false);
         return;
       }
 
-      // Success
+      // toast message on success
       onToast?.(
         isEditMode ? 'Contact updated successfully' : 'Contact created successfully',
         'success'
       );
-      // If editing, go back to contact detail page, otherwise go to home
-      if (isEditMode && contactId) {
+      // If in modal, close iT. otherwise navigate to the contact page or the home page
+      if (isModal && onClose) {
+        onClose();
+      } else if (isEditMode && contactId) {
         router.push(`/contacts/${contactId}`);
       } else {
-        router.push('/');
+      router.push('/');
       }
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to save contact';
@@ -176,14 +173,14 @@ export default function ContactForm({ onToast }: ContactFormProps) {
   if (loading) {
     return (
       <div className="form-container">
-        <p>Loading...</p>
+        <Loader />
       </div>
     );
   }
 
   return (
-    <div className="form-container">
-      <h1>{isEditMode ? 'Edit Contact' : 'Create New Contact'}</h1>
+    <div className={isModal ? 'form-container-modal' : 'form-container'}>
+      {!isModal && <h1>{isEditMode ? 'Edit Contact' : 'Create New Contact'}</h1>}
 
       {generalError && <div className="error-message-general">{generalError}</div>}
 
@@ -290,9 +287,19 @@ export default function ContactForm({ onToast }: ContactFormProps) {
           <button type="submit" className="btn-primary" disabled={submitting}>
             {submitting ? 'Saving...' : isEditMode ? 'Update Contact' : 'Create Contact'}
           </button>
-          <Link href="/" className="btn-secondary">
-            Cancel
+          {isModal ? (
+            <button type="button" onClick={onClose} className="btn-secondary" disabled={submitting}>
+              Cancel
+            </button>
+          ) : isEditMode && contactId ? (
+            <Link href={`/contacts/${contactId}`} className="btn-secondary">
+              Cancel
+            </Link>
+          ) : (
+            <Link href="/" className="btn-secondary">
+              Cancel
           </Link>
+          )}
         </div>
       </form>
     </div>

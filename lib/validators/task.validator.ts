@@ -1,8 +1,3 @@
-/**
- * Task Validation
- * Validates task input before saving to database
- */
-
 import {
   CreateTaskInput,
   UpdateTaskInput,
@@ -11,15 +6,11 @@ import {
 } from '@/types/task.types';
 
 class TaskValidator {
-  /**
-   * VALIDATE TASK TITLE
-   * Must be 2-200 characters
-   */
+  
   static validateTitle(title: string): { isValid: boolean; error?: string } {
     if (typeof title !== 'string') {
       return { isValid: false, error: 'Title must be a string' };
     }
-
     const trimmed = title.trim();
     if (trimmed.length < 2 || trimmed.length > 200) {
       return {
@@ -27,23 +18,17 @@ class TaskValidator {
         error: `Title must be between 2-200 characters. You provided ${trimmed.length}`,
       };
     }
-
     return { isValid: true };
   }
 
-  /**
-   * VALIDATE TASK DESCRIPTION
-   * Optional, but if provided must be 0-500 characters
-   */
+
   static validateDescription(description?: string): { isValid: boolean; error?: string } {
     if (!description) {
-      return { isValid: true }; // Optional field
+      return { isValid: true }; 
     }
-
     if (typeof description !== 'string') {
       return { isValid: false, error: 'Description must be a string' };
     }
-
     const trimmed = description.trim();
     if (trimmed.length > 500) {
       return {
@@ -51,90 +36,69 @@ class TaskValidator {
         error: `Description must be 0-500 characters. You provided ${trimmed.length}`,
       };
     }
-
     return { isValid: true };
   }
 
-  /**
-   * VALIDATE DUE DATE
-   * Optional, but if provided must be valid ISO date and not in the past
-   */
+
   static validateDueDate(dueDate?: string): { isValid: boolean; error?: string } {
     if (!dueDate) {
-      return { isValid: true }; // Optional field
+      return { isValid: true }; 
     }
-
     if (typeof dueDate !== 'string') {
       return { isValid: false, error: 'Due date must be a string' };
     }
-
-    // Check if valid ISO date format
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!dateRegex.test(dueDate)) {
       return { isValid: false, error: 'Due date must be in ISO format: YYYY-MM-DD' };
     }
-
-    // Check if valid date (not invalid like 2025-02-30)
     const date = new Date(dueDate);
     if (isNaN(date.getTime())) {
       return { isValid: false, error: 'Due date is not a valid date' };
     }
-
-    // Check if date is not in the past (compare only dates, not time)
+    // checks if date is not in the past (though calendar does not allow to select previous dates,
+    //  they are disabled in the input field,but still to be on safe side.)
+    const [year, month, day] = dueDate.split('-').map(Number);
+    const dueDateOnly = new Date(year, month - 1, day);
+    dueDateOnly.setHours(0, 0, 0, 0);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const dueDateOnly = new Date(date);
-    dueDateOnly.setHours(0, 0, 0, 0);
-
     if (dueDateOnly < today) {
       return { isValid: false, error: 'Due date cannot be less than current date' };
     }
-
     return { isValid: true };
   }
 
-  /**
-   * VALIDATE CONTACT ID
-   * Must exist and be non-empty
-   */
+
+
   static validateContactId(contactId: string): { isValid: boolean; error?: string } {
     if (typeof contactId !== 'string') {
       return { isValid: false, error: 'Contact ID must be a string' };
     }
-
     if (contactId.trim() === '') {
       return { isValid: false, error: 'Contact ID is required' };
     }
-
     return { isValid: true };
   }
 
-  /**
-   * FULL TASK VALIDATION FOR CREATE
-   * Runs ALL validators
-   */
+  // runs all validations
   static validateCreateInput(input: CreateTaskInput): ValidationResult {
     const errors: ValidationError[] = [];
 
-    // Validate contactId
     const contactIdValidation = this.validateContactId(input.contactId);
     if (!contactIdValidation.isValid) {
       errors.push({ field: 'contactId', message: contactIdValidation.error || '' });
     }
 
-    // Validate title
     const titleValidation = this.validateTitle(input.title);
     if (!titleValidation.isValid) {
       errors.push({ field: 'title', message: titleValidation.error || '' });
     }
 
-    // Validate description (optional)
     const descValidation = this.validateDescription(input.description);
     if (!descValidation.isValid) {
       errors.push({ field: 'description', message: descValidation.error || '' });
     }
 
-    // Validate dueDate (optional)
     const dueDateValidation = this.validateDueDate(input.dueDate);
     if (!dueDateValidation.isValid) {
       errors.push({ field: 'dueDate', message: dueDateValidation.error || '' });
@@ -146,10 +110,7 @@ class TaskValidator {
     };
   }
 
-  /**
-   * PARTIAL UPDATE VALIDATION
-   * Only validates fields being updated
-   */
+  // only validates updated fields
   static validateUpdateInput(input: UpdateTaskInput): ValidationResult {
     const errors: ValidationError[] = [];
 

@@ -13,6 +13,16 @@
 import ContactValidator from '@/lib/validators/contact.validator';
 import TaskValidator from '@/lib/validators/task.validator';
 
+// Helper to get a future date (tomorrow)
+function getFutureDate(): string {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const year = tomorrow.getFullYear();
+  const month = String(tomorrow.getMonth() + 1).padStart(2, '0');
+  const day = String(tomorrow.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 describe('Contact Validator', () => {
   describe('validateCreateInput', () => {
     const validInput = {
@@ -163,7 +173,7 @@ describe('Task Validator', () => {
       contactId: '1',
       title: 'Follow up on project',
       description: 'Check status with client',
-      dueDate: '2025-02-01',
+      dueDate: getFutureDate(),
     };
 
     it('should pass validation for valid input', () => {
@@ -245,7 +255,7 @@ describe('Task Validator', () => {
     it('should accept valid ISO date format', () => {
       const result = TaskValidator.validateCreateInput({
         ...validInput,
-        dueDate: '2025-12-31',
+        dueDate: getFutureDate(),
       });
 
       expect(result.isValid).toBe(true);

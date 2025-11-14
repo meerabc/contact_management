@@ -1,8 +1,3 @@
-/**
- * Example card component
- * Remove or modify this based on your project needs
- */
-
 interface CardProps {
   title: string;
   description: string;

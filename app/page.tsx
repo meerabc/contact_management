@@ -13,7 +13,7 @@ export default function Home() {
 
   return (
     <main className="contacts-page">
-      <ContactList onSelectContact={handleSelectContact} selectedContact={null} />
+        <ContactList onSelectContact={handleSelectContact} selectedContact={null} />
     </main>
   );
 }
